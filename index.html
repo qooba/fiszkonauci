@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>Fiszkonauci</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #222;
+      color: #fff;
+      font-family: sans-serif;
+    }
+    #game-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container"></div>
+  
+  <!-- Ładowanie bibliotek: Phaser oraz js-yaml -->
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+  
+  <script>
+    // Globalne zmienne konfiguracji i sterowania kolejnością fiszek.
+    let configData;
+    let allCards = [];
+    let isRandom = false; // Domyślnie tryb losowy
+    let sequentialIndex = 0;
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id"); // Replace with actual param name
+    
+    // Funkcja do wczytania zewnętrznego pliku YAML
+    async function loadYAMLConfig(url) {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Błąd wczytywania YAML");
+        const yamlText = await response.text();
+        return jsyaml.load(yamlText);
+      } catch (error) {
+        console.error("Błąd: ", error);
+      }
+    }
+    
+    // Wczytanie konfiguracji i uruchomienie gry
+    loadYAMLConfig(`/fiszkonauci/${id}.yaml`).then(data => {
+      configData = data;
+      
+      // Spłaszczenie wszystkich kart z tematów – dodajemy informację o kategorii
+      configData.topics.forEach(topic => {
+        allCards = allCards.concat(topic.cards.map(card => ({
+          ...card,
+          category: topic.category
+        })));
+      });
+      
+      // Konfiguracja gry Phaser
+      const phaserConfig = {
+        type: Phaser.AUTO,
+        width: 800,
+        height: 600,
+        backgroundColor: '#2d2d2d',
+        parent: 'game-container',
+        scene: {
+          preload: preload,
+          create: create,
+          update: update
+        }
+      };
+      new Phaser.Game(phaserConfig);
+    });
+    
+    let currentCard;
+    let questionText;
+    let subchapterText;
+    let categoryText;
+    let answerText;
+    let answerButton;
+    let nextButton;
+    let toggleButton;
+    
+    function preload() {
+      // Ładowanie zasobów (jeśli potrzebne)
+    }
+    
+    function create() {
+      const scene = this;
+      
+      // Wyświetlenie tytułu sprawdzianu
+      scene.add.text(400, 30, configData.title, { fontSize: '24px', fill: '#ffffff' }).setOrigin(0.5);
+      
+      // Przycisk przełączający tryb kolejności fiszek (losowo/kolejnie)
+      toggleButton = scene.add.text(400, 70, 'Tryb: Kolejnie', {
+        fontSize: '20px',
+        fill: '#ffff00',
+        backgroundColor: '#000',
+        padding: { x: 10, y: 5 }
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => {
+        isRandom = !isRandom;
+        toggleButton.setText(isRandom ? 'Tryb: Losowo' : 'Tryb: Kolejnie');
+      });
+      
+      // Funkcja do prezentowania nowej fiszki
+      function showNewCard() {
+        if (isRandom) {
+          currentCard = Phaser.Utils.Array.GetRandom(allCards);
+        } else {
+          currentCard = allCards[sequentialIndex];
+          sequentialIndex = (sequentialIndex + 1) % allCards.length;
+        }
+        questionText.setText(currentCard.question);
+        subchapterText.setText("Subrozdział: " + (currentCard.subchapter || "Brak"));
+        categoryText.setText("Temat: " + (currentCard.category || "Brak"));
+        answerText.setText(currentCard.answer);
+        answerText.setVisible(false);
+      }
+      
+      // Wyświetlenie pytania
+      questionText = scene.add.text(400, 250, "", { 
+        fontSize: '28px', 
+        fill: '#ffffff', 
+        wordWrap: { width: 700 }
+      }).setOrigin(0.5);
+      
+      // Wyświetlenie informacji o subrozdziale
+      subchapterText = scene.add.text(400, 130, "", { 
+        fontSize: '20px', 
+        fill: '#ffcc00'
+      }).setOrigin(0.5);
+      
+      // Wyświetlenie informacji o kategorii (temacie)
+      categoryText = scene.add.text(400, 100, "", { 
+        fontSize: '20px', 
+        fill: '#ffcc00'
+      }).setOrigin(0.5);
+      
+      // Wyświetlenie odpowiedzi – początkowo ukryte
+      answerText = scene.add.text(400, 350, "", { 
+        fontSize: '24px', 
+        fill: '#00ff00', 
+        wordWrap: { width: 700 }
+      }).setOrigin(0.5);
+      answerText.setVisible(false);
+      
+      // Przycisk "Pokaż odpowiedź"
+      answerButton = scene.add.text(400, 480, 'Pokaż odpowiedź', { 
+        fontSize: '24px', 
+        fill: '#ffff00', 
+        backgroundColor: '#000', 
+        padding: { x: 10, y: 5 }
+      }).setOrigin(0.5)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => {
+        answerText.setVisible(true);
+      });
+      
+      // Przycisk "Następna fiszka"
+      nextButton = scene.add.text(400, 540, 'Następna fiszka', { 
+        fontSize: '24px', 
+        fill: '#ffff00', 
+        backgroundColor: '#000', 
+        padding: { x: 10, y: 5 }
+      }).setOrigin(0.5)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => {
+        showNewCard();
+      });
+      
+      // Pokazanie pierwszej karty
+      showNewCard();
+    }
+    
+    function update() {
+      // Aktualizacje (jeśli będą potrzebne)
+    }
+  </script>
+</body>
+</html>
